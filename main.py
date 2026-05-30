@@ -399,11 +399,7 @@ class Main(Star):
             try:
                 img_path = await html_renderer.render_custom_template(
                     tmpl_str=self.mc_html_tmpl,
-                    options={
-                        "quality": 90,
-                        "deviceScaleFactor": 2,
-                        "viewport": {"width": 520, "height": 400},
-                    },
+                    options={"quality": 90, "deviceScaleFactor": 2},
                     tmpl_data=_mcs_tmpl_data,
                 )
                 return CommandResult().file_image(img_path)

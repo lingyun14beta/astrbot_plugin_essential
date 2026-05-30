@@ -36,7 +36,7 @@ class Main(Star):
         self.config = config
         self.PLUGIN_NAME = "astrbot_plugin_essential"
 
-        # 动态加载 poke 子模块（AstrBot 插件不支持相对导入）
+        # 动态加载 poke 子模块
         import importlib.util
         import sys
 
@@ -53,10 +53,8 @@ class Main(Star):
             sys.modules[_poke_name] = _mod
             self._poke = _mod
 
-        # 插件目录（用于读取模板和资源文件）
         self._plugin_dir = Path(__file__).resolve().parent
 
-        # mcs.html 不存在时降级为空字符串（mcs 命令会走纯文本降级路径）
         _mcs_html = self._plugin_dir / "templates" / "mcs.html"
         self.mc_html_tmpl = (
             _mcs_html.read_text(encoding="utf-8") if _mcs_html.exists() else ""
@@ -72,20 +70,18 @@ class Main(Star):
         self.search_anmime_demand_users: dict = {}
         self.good_morning_cd: dict = {}
 
-        # 图片缓存目录（喜报/悲报/moe），遵循官方约定 data/plugin_data/{name}/
+        # 图片缓存目录
         self._cache_dir = (
             Path(get_astrbot_data_path()) / "plugin_data" / "astrbot_plugin_essential"
         )
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # 运行时数据，在 initialize() 中通过 KV 加载
         self.what_to_eat_data: list = []
 
     async def initialize(self) -> None:
         """插件激活时加载持久化数据，并迁移旧版 JSON 文件。"""
         self.what_to_eat_data = self._load_food_json()
 
-        # 早晚安数据按群存储，不在启动时全量加载，迁移旧版 JSON 即可
         await self._migrate_good_morning_json()
 
     async def terminate(self) -> None:
@@ -123,11 +119,9 @@ class Main(Star):
         私聊场景 session_id 为 user_id，新版降级用 unified_msg_origin，
         格式不同故私聊历史数据无法自动对齐，迁移后将被忽略（影响极小）。
         """
-        # 旧文件不存在说明是全新安装，无需迁移
         old_path = Path(f"{_DATA_DIR}/{self.PLUGIN_NAME}_data.json")
         if not old_path.exists():
             return
-        # 标志位存在说明已迁移过，跳过（避免每次启动都查文件）
         sentinel = await self.get_kv_data(_GOOD_MORNING_PREFIX + "__migrated__", None)
         if sentinel is not None:
             return
@@ -372,7 +366,6 @@ class Main(Star):
         if "error" in data:
             return CommandResult().error(f"查询失败: {data['error']}")
 
-        # 尝试用 HTML 模板渲染为图片，失败或模板不存在时降级为纯文本
         if self.mc_html_tmpl:
             try:
                 img_path = await html_renderer.render_custom_template(
@@ -382,7 +375,9 @@ class Main(Star):
                         "motd": data.get("motd", {"clean": ["", ""]}),
                         "players": data.get("players", {"online": 0, "max": 0}),
                         "version": data.get("version", "未知"),
-                        "protocol_name": data.get("protocol", {}).get("name", "未知"),
+                        "protocol_name": data.get("protocol", {}).get("name", "未知")
+                        if isinstance(data.get("protocol"), dict)
+                        else str(data.get("protocol", "未知")),
                         "ip": ip,
                         "port": data.get("port", 25565),
                         "online": data.get("online", False),
@@ -573,7 +568,6 @@ class Main(Star):
         """和 Bot 说早晚安，记录睡眠时间，培养良好作息。"""
         # CREDIT: 灵感部分借鉴自 https://github.com/MinatoAquaCrews/nonebot_plugin_morning
 
-        # 使用 group_id 作为存储 key，避免隔离会话模式下每人一个桶
         group_id = message.get_group_id() or message.unified_msg_origin
         user_id = message.message_obj.sender.user_id
         user_name = message.message_obj.sender.nickname
@@ -592,7 +586,6 @@ class Main(Star):
 
         is_night = "晚安" in message.message_str
 
-        # 只读写当前群的数据，key 为 good_morning:{group_id}
         kv_key = _GOOD_MORNING_PREFIX + group_id
         umo = await self.get_kv_data(kv_key, {})
         if not isinstance(umo, dict):
@@ -637,7 +630,7 @@ class Main(Star):
                 .use_t2i(False)  # noqa: FBT003
             )
 
-        # 统计今日群内睡觉人数（完整日期字符串，避免跨月误判）
+        # 统计今日睡觉人数
         curr_day_sleeping = 0
         for v in umo.values():
             if v["daily"]["night_time"] and not v["daily"]["morning_time"]:
